@@ -7,13 +7,9 @@ import { toast } from "sonner";
 // Shared Components
 import ModelPageLayout from "../_components/ModelPageLayout";
 import SettingsPanel from "../_components/SettingsPanel";
-import OutputPanel, { GenerationParameters } from "../_components/OutputPanel";
+import OutputPanel from "../_components/OutputPanel";
 // Model Specific Settings Component
-import FluxLoraSettings from "./FluxLoraSettings";
-// Types
-import { LoraItemData } from "../_components/LoraItem"; // For LoRA state
-
-// import { Square, RectangleHorizontal, RectangleVertical } from 'lucide-react';
+import TestModelSettings from "./TestModelSettings";
 
 
 // API response types (consider moving to a shared types.ts file)
@@ -36,55 +32,14 @@ interface ApiResponse {
 }
 
 // Constants (can also be moved or configured)
-// const FLUX_LORA_IMAGE_SIZE_OPTIONS = [
-//   { value: "square_hd", label: "1:1 HD", icon: "■" },
-//   { value: "square", label: "1:1", icon: "□" },
-//   { value: "portrait_4_3", label: "3:4", icon: "▯" },
-//   { value: "portrait_16_9", label: "9:16", icon: "▮" },
-//   { value: "landscape_4_3", label: "4:3", icon: "▭" },
-//   { value: "landscape_16_9", label: "16:9", icon: "▬" },
-// ];
-
 const FLUX_LORA_IMAGE_SIZE_OPTIONS = [
-  {
-    value: "square_hd",
-    label: "1:1 HD", // 第一行：比例
-    resolution: "1024x1024", // 第二行：分辨率
-    icon: "□",
-  },
-  {
-    value: "square",
-    label: "1:1",
-    resolution: "512x512",
-    icon: "□",
-  },
-  {
-    value: "portrait_4_3",
-    label: "3:4",
-    resolution: "768x1024",
-    icon: "▯",
-  },
-  {
-    value: "portrait_16_9",
-    label: "9:16",
-    resolution: "576x1024",
-    icon: "▯",
-  },
-  {
-    value: "landscape_4_3",
-    label: "4:3",
-    resolution: "1024x768",
-    icon: "▭",
-  },
-  {
-    value: "landscape_16_9",
-    label: "16:9",
-    resolution: "1024x576",
-    icon: "▭",
-  },
+  { value: "square_hd", label: "1:1 HD", icon: "■" },
+  { value: "square", label: "1:1", icon: "□" },
+  { value: "portrait_4_3", label: "3:4", icon: "▯" },
+  { value: "portrait_16_9", label: "9:16", icon: "▮" },
+  { value: "landscape_4_3", label: "4:3", icon: "▭" },
+  { value: "landscape_16_9", label: "16:9", icon: "▬" },
 ];
-
-
 
 export default function FluxLoraPage() {
   // State for Flux LoRA Model
@@ -97,29 +52,12 @@ export default function FluxLoraPage() {
   const [numImages, setNumImages] = useState<number>(1);
   const [numInferenceSteps, setNumInferenceSteps] = useState<number>(28);
   const [guidanceScale, setGuidanceScale] = useState<number>(3.5);
-  const [loras, setLoras] = useState<LoraItemData[]>([]); // Use LoraItemData type
 
   // State for API interaction and UI
   const [generatedImage, setGeneratedImage] = useState<ApiImage | null>(null);
-  // const [generatedSeed, setGeneratedSeed] = useState<number | null>(null);
+  const [generatedSeed, setGeneratedSeed] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [lastGenerationParams, setLastGenerationParams] = useState<GenerationParameters | null>(null);
 
-  // LoRA specific handlers (can be part of FluxLoraSettings if state is managed there,
-  // or kept here if FluxLoraPage manages the 'loras' state directly)
-  const handleAddLora = () => {
-    setLoras((prevLoras) => [...prevLoras, { id: crypto.randomUUID(), path: "", scale: 1.0 }]);
-  };
-  const handleRemoveLora = (id: string) => {
-    setLoras((prevLoras) => prevLoras.filter((lora) => lora.id !== id));
-  };
-  const handleLoraChange = (id: string, field: "path" | "scale", value: string | number) => {
-    setLoras((prevLoras) =>
-      prevLoras.map((lora) =>
-        lora.id === id ? { ...lora, [field]: field === "scale" ? Number(value) : value } : lora
-      )
-    );
-  };
   const generateNewSeed = () => {
     const newSeedVal = String(Math.floor(Math.random() * 100000000));
     setSeed(newSeedVal);
@@ -131,25 +69,19 @@ export default function FluxLoraPage() {
     event.preventDefault();
     setIsLoading(true);
     setGeneratedImage(null);
-    // setGeneratedSeed(null);
-
-    const currentSeed = seed ? parseInt(seed, 10) : Math.floor(Math.random() * 100000000);
-    if (!seed) { // If seed was empty, update the input field with the generated one
-        setSeed(String(currentSeed));
-    }
+    setGeneratedSeed(null);
 
     const payload = {
       prompt,
       image_size: imageSize,
       num_inference_steps: numInferenceSteps,
-      seed: currentSeed,
+      seed: seed ? parseInt(seed, 10) : undefined,
       guidance_scale: guidanceScale,
       num_images: numImages,
       output_format: outputFormat,
-      enable_safety_checker: false,
+      enable_safety_checker: true,
       loras: loras.filter(lora => lora.path.trim() !== '').map(({ id, ...rest}) => rest),
     };
-    setLastGenerationParams(payload);
 
     try {
       const response = await fetch("/api/generate", { // Assuming API endpoint is generic
@@ -170,19 +102,16 @@ export default function FluxLoraPage() {
       
       if (responseBody.data && responseBody.data.images && responseBody.data.images.length > 0) {
         setGeneratedImage(responseBody.data.images[0]);
-        // Update lastGenerationParams with the actual seed used by the API if it differs
-        // Fal.ai's flux-lora seems to return the input seed if provided, or the generated one.
-        if (responseBody.data.seed !== payload.seed) {
-            setLastGenerationParams(prev => ({...prev!, seed: responseBody.data.seed}));
-            setSeed(String(responseBody.data.seed)); // Update input field with actual used seed
+        if (responseBody.data.seed) {
+            setGeneratedSeed(responseBody.data.seed);
         }
-        toast.success("图像生成成功!");
+        toast.success("Image generated successfully!");
       } else {
-        throw new Error("API 未返回图像或响应结构异常。");
+        throw new Error("No image returned from API or unexpected response structure.");
       }
     } catch (error: any) {
-      console.error("图片生成失败：", error);
-      toast.error(error.message || "生成图片失败。");
+      console.error("Generation failed:", error);
+      toast.error(error.message || "Failed to generate image.");
     } finally {
       setIsLoading(false);
     }
@@ -190,11 +119,11 @@ export default function FluxLoraPage() {
 
   // Optional: Functions for "Save Settings" or "Load Defaults"
   const handleSaveSettings = () => {
-    toast.info("保存设置功能尚未实现。");
+    toast.info("Save settings functionality not implemented yet.");
     // Implement localStorage saving or API call
   };
   const handleLoadDefaults = () => {
-    toast.info("加载默认设置功能尚未实现。");
+    toast.info("Load default settings functionality not implemented yet.");
     // Implement resetting state to defaults
     setPrompt("Extreme close-up of a single tiger eye...");
     setImageSize("landscape_16_9");
@@ -205,7 +134,7 @@ export default function FluxLoraPage() {
   return (
     <ModelPageLayout
       title="Flux LoRA"
-      description="使用 Fal.ai Flux LoRA 模型生成图像"
+      description="Generate images using the Fal.ai Flux LoRA model"
       settingsNode={
         <SettingsPanel
           onSubmit={handleSubmit}
@@ -214,7 +143,7 @@ export default function FluxLoraPage() {
           onSaveSettings={handleSaveSettings} // Pass optional handlers
           onLoadDefaults={handleLoadDefaults}
         >
-          <FluxLoraSettings
+          <TestModelSettings
             prompt={prompt} setPrompt={setPrompt}
             imageSize={imageSize} setImageSize={setImageSize} imageSizeOptions={FLUX_LORA_IMAGE_SIZE_OPTIONS}
             outputFormat={outputFormat} setOutputFormat={setOutputFormat}
@@ -222,10 +151,6 @@ export default function FluxLoraPage() {
             numImages={numImages} setNumImages={setNumImages}
             numInferenceSteps={numInferenceSteps} setNumInferenceSteps={setNumInferenceSteps}
             guidanceScale={guidanceScale} setGuidanceScale={setGuidanceScale}
-            loras={loras} setLoras={setLoras} // Pass setLoras if FluxLoraSettings directly manipulates it
-            handleAddLora={handleAddLora}
-            handleRemoveLora={handleRemoveLora}
-            handleLoraChange={handleLoraChange}
           />
         </SettingsPanel>
       }
@@ -233,7 +158,8 @@ export default function FluxLoraPage() {
         <OutputPanel
           isLoading={isLoading}
           generatedImage={generatedImage}
-          generationParams={lastGenerationParams}
+          promptText={prompt}
+          generatedSeed={generatedSeed}
         />
       }
     />

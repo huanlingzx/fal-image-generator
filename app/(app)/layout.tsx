@@ -2,7 +2,7 @@
 "use client"; // If using client-side state like darkMode in the header
 
 import { useState, useEffect } from "react";
-import Image from "next/image"; // If your logo is an image
+// import Image from "next/image"; // If your logo is an image
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { KeyRound, Settings2, Trash2, Moon, Sun } from "lucide-react";
@@ -43,7 +43,7 @@ export default function AppLayout({
 
   const navItems = [
      { href: "/", label: "首页" },
-     { href: "/models/fal-ai-flux-lora", label: "所有模型" }, // Or a generic /models page first
+     { href: "/models", label: "所有模型" }, // Or a generic /models page first
      { href: "/history", label: "生成历史" },
   ];
 
@@ -65,9 +65,9 @@ export default function AppLayout({
                      key={item.href}
                      href={item.href}
                      className={`${
-                         pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href))
-                         ? "text-foreground dark:text-slate-200 font-semibold"
-                         : "text-muted-foreground hover:text-foreground dark:text-slate-400 dark:hover:text-slate-200"
+                        (pathname === item.href || (item.href === "/models" && pathname.startsWith("/models/")))
+                        ? "text-foreground dark:text-slate-200 font-semibold"
+                        : "text-muted-foreground hover:text-foreground dark:text-slate-400 dark:hover:text-slate-200"
                      }`}
                  >
                      {item.label}

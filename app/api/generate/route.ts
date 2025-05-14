@@ -12,32 +12,17 @@ fal.config({
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { prompt, image_size, num_inference_steps, seed, loras, guidance_scale, num_images, output_format, enable_safety_checker } = body;
-
-    console.log("Received request body:", body);
-
-    const input: any = {
-      prompt,
-      image_size,
-      num_inference_steps,
-      guidance_scale,
-      num_images,
-      output_format,
-      enable_safety_checker,
-    };
-
-    if (seed) {
-      input.seed = parseInt(seed, 10);
+    const { model_id, input } = body; // Expect model_id and the actual input object
+    if (!model_id || typeof model_id !== 'string') {
+        return NextResponse.json({ error: "model_id is required" }, { status: 400 });
     }
-    if (loras && loras.length > 0) {
-      input.loras = loras.map((lora: { path: string; scale: string | number }) => ({
-        ...lora,
-        scale: parseFloat(String(lora.scale)),
-      }));
+    if (!input || typeof input !== 'object') {
+        return NextResponse.json({ error: "input payload is required" }, { status: 400 });
     }
+    console.log(`Received request for model ${model_id} with input:`, input);
     
-    const result: any = await fal.subscribe("fal-ai/flux-lora", {
-      input: input,
+    const result: any = await fal.subscribe(model_id, { // Use the dynamic model_id
+      input: input, // Pass the nested input object directly
       logs: true,
       onQueueUpdate: (update) => {
         if (update.status === "IN_PROGRESS" && update.logs) {
@@ -45,8 +30,7 @@ export async function POST(request: NextRequest) {
         }
       },
     });
-
-    console.log("Fal.ai API result:", result); // This log is correct
+    console.log(`Fal.ai API result for ${model_id}:`, result);
 
     // ***** CORRECTED SUCCESS CHECK *****
     if (result && result.data && result.data.images && result.data.images.length > 0) {
