@@ -13,7 +13,9 @@ import FluxLoraSettings from "./FluxLoraSettings";
 // Types
 import { LoraItemData } from "../_components/LoraItem"; // For LoRA state
 
-// import { Square, RectangleHorizontal, RectangleVertical } from 'lucide-react';
+import ImageDetailModal from "../_components/ImageDetailModal"; // Import the modal
+import { HistoryEntry, ApiImage as GlobalApiImage } from "@/lib/types"; // Import types
+// import { addHistoryEntry } from "@/lib/history"; // To save to history
 
 
 // API response types (consider moving to a shared types.ts file)
@@ -105,6 +107,10 @@ export default function FluxLoraPage() {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [lastGenerationParams, setLastGenerationParams] = useState<GenerationParameters | null>(null);
 
+  // State for the image detail modal
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [modalImageDetails, setModalImageDetails] = useState<HistoryEntry | null>(null);
+
   // LoRA specific handlers (can be part of FluxLoraSettings if state is managed there,
   // or kept here if FluxLoraPage manages the 'loras' state directly)
   const handleAddLora = () => {
@@ -152,7 +158,8 @@ export default function FluxLoraPage() {
     setLastGenerationParams(payload);
 
     try {
-      const response = await fetch("/api/generate", { // Assuming API endpoint is generic
+      // 1. Generate Image via Fal.ai (through your /api/generate)
+      const response = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -169,14 +176,38 @@ export default function FluxLoraPage() {
       }
       
       if (responseBody.data && responseBody.data.images && responseBody.data.images.length > 0) {
-        setGeneratedImage(responseBody.data.images[0]);
-        // Update lastGenerationParams with the actual seed used by the API if it differs
-        // Fal.ai's flux-lora seems to return the input seed if provided, or the generated one.
-        if (responseBody.data.seed !== payload.seed) {
-            setLastGenerationParams(prev => ({...prev!, seed: responseBody.data.seed}));
-            setSeed(String(responseBody.data.seed)); // Update input field with actual used seed
+        const apiImage: GlobalApiImage = responseBody.data.images[0];
+        setGeneratedImage(apiImage);
+        
+        const actualSeed = responseBody.data.seed || payload.seed;
+        const finalParams = {...payload, seed: actualSeed};
+        setLastGenerationParams(finalParams);
+        if (String(actualSeed) !== seed) setSeed(String(actualSeed));
+
+        // 2. Save to History via your new /api/history
+        try {
+            const historyPayload = {
+                modelId: "fal-ai/flux-lora", // This should be dynamic
+                modelName: "Flux LoRA", // This should be dynamic
+                image: apiImage,
+                parameters: finalParams,
+            };
+            const historyApiResponse = await fetch('/api/history', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(historyPayload),
+            });
+            if (!historyApiResponse.ok) {
+                const historyError = await historyApiResponse.json();
+                console.error("Failed to save to history:", historyError.error);
+                toast.error("图像已生成，但保存历史记录失败。");
+            } else {
+                 toast.success("图像生成成功并已保存到历史记录！");
+            }
+        } catch (historySaveError: any) {
+            console.error("Error saving to history:", historySaveError);
+            toast.error("图像已生成，但保存历史记录时出错。");
         }
-        toast.success("图像生成成功!");
       } else {
         throw new Error("API 未返回图像或响应结构异常。");
       }
@@ -185,6 +216,23 @@ export default function FluxLoraPage() {
       toast.error(error.message || "生成图片失败。");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+
+  const handleOutputImageClick = () => {
+    if (generatedImage && lastGenerationParams) {
+      // Construct a temporary HistoryEntry-like object for the modal
+      const tempEntry: HistoryEntry = {
+        id: `temp-${Date.now()}`, // Temporary ID
+        modelId: "fal-ai/flux-lora",
+        modelName: "Flux LoRA",
+        timestamp: Date.now(),
+        image: generatedImage,
+        parameters: lastGenerationParams,
+      };
+      setModalImageDetails(tempEntry);
+      setIsDetailModalOpen(true);
     }
   };
 
@@ -203,6 +251,7 @@ export default function FluxLoraPage() {
 
 
   return (
+    <>
     <ModelPageLayout
       title="Flux LoRA"
       description="使用 Fal.ai Flux LoRA 模型生成图像"
@@ -237,5 +286,12 @@ export default function FluxLoraPage() {
         />
       }
     />
+      <ImageDetailModal
+        isOpen={isDetailModalOpen}
+        onOpenChange={setIsDetailModalOpen}
+        historyEntry={modalImageDetails}
+        // No delete/favorite actions needed for this temporary view from model page
+      />
+    </>
   );
 }

@@ -1,0 +1,45 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("POSTGRES_URL") // From Vercel via .env
+}
+
+model HistoryEntry {
+  id                  String    @id @default(cuid())
+  userId              String?   // Optional: if you implement user accounts
+  modelId             String    // e.g., "fal-ai/flux-lora"
+  modelName           String    // e.g., "Flux LoRA"
+  timestamp           DateTime  @default(now())
+  imageUrl            String
+  imageContentType    String
+  imageWidth          Int
+  imageHeight         Int
+  prompt              String    @db.Text // Use Text for potentially long prompts
+  imageSize           String?   // e.g., "landscape_16_9" or JSON string for custom
+  numInferenceSteps   Int?
+  seed                BigInt?   // Use BigInt for potentially large seeds
+  guidanceScale       Float?
+  numImages           Int?
+  outputFormat        String?   // "jpeg" or "png"
+  enableSafetyChecker Boolean?
+  lorasJson           String?   @db.Text // Store LoRAs as JSON string
+  // Store other parameters as JSON if they are highly variable
+  // Or add specific columns if they are common and you want to query them
+  otherParamsJson     String?   @db.Text
+  isFavorite          Boolean   @default(false)
+  isDeleted           Boolean   @default(false) // Soft delete
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([timestamp])
+  @@index([isFavorite])
+  @@index([isDeleted])
+}
