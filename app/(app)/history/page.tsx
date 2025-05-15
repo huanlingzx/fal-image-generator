@@ -11,7 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Trash2, Star, Maximize, Search, Loader2 } from "lucide-react";
+import { Trash2, Star, Search, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { modelsData } from "../models/models-data"; // For model filter dropdown
 import { useDebounce } from "@/hooks/useDebounce"; // A custom hook for debouncing search
@@ -20,7 +20,10 @@ const ITEMS_PER_PAGE = 12; // Or your preferred number
 
 export default function HistoryPage() {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [paginatedDisplayHistory, setPaginatedDisplayHistory] = useState<HistoryEntry[]>([]); // Index within the 'history' array
+
   const [selectedEntry, setSelectedEntry] = useState<HistoryEntry | null>(null);
+  const [selectedEntryIndex, setSelectedEntryIndex] = useState<number>(-1); // Index within the 'history' array
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -36,11 +39,11 @@ export default function HistoryPage() {
   const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
 
 
-  const fetchHistory = useCallback(async () => {
+  const fetchHistory = useCallback(async (pageToFetch: number) => {
     setIsLoading(true);
     try {
       const params = new URLSearchParams({
-        page: String(currentPage),
+        page: String(pageToFetch),
         limit: String(ITEMS_PER_PAGE),
       });
       if (debouncedSearchTerm) params.append('searchTerm', debouncedSearchTerm);
@@ -49,15 +52,23 @@ export default function HistoryPage() {
         params.append('modelFilter', modelFilter);
       }
       if (sortOrder) params.append('sortOrder', sortOrder);
+
       const response = await fetch(`/api/history?${params.toString()}`);
+
       if (!response.ok) {
         throw new Error('Failed to fetch history');
       }
       const data = await response.json();
-      setHistory(data.data || []);
+
+      console.log(data);
+
+      setPaginatedDisplayHistory(data.data || []);
       setTotalPages(data.totalPages || 1);
       setCurrentPage(data.currentPage || 1);
       setTotalItems(data.totalItems || 0);
+
+      setHistory(data.data || []);
+
     } catch (error) {
       console.error("Error fetching history:", error);
       toast.error("加载历史记录失败。");
@@ -65,28 +76,45 @@ export default function HistoryPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [currentPage, debouncedSearchTerm, modelFilter, sortOrder]);  
+  }, [debouncedSearchTerm, modelFilter, sortOrder]);  
 
   useEffect(() => {
-    fetchHistory();
-  }, [fetchHistory]); // fetchHistory is memoized with useCallback
+    fetchHistory(currentPage);
+  }, [fetchHistory, currentPage]);
+
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
   }, [debouncedSearchTerm, modelFilter, sortOrder]);
-  const handleImageClick = (entry: HistoryEntry) => {
+
+  const handleImageClick = (entry: HistoryEntry, indexInPage: number) => {
+    // `indexInPage` is the index within `paginatedDisplayHistory`
+    // To get the correct `currentIndex` for the modal (if `history` state truly holds all items matching filters)
+    // you'd find the index of `entry.id` in the `history` state.
+    // For now, assuming navigation is within the current page's items:
+    const overallIndex = history.findIndex(h => h.id === entry.id);
     setSelectedEntry(entry);
+    setSelectedEntryIndex(overallIndex !== -1 ? overallIndex : indexInPage); // Fallback to indexInPage
     setIsModalOpen(true);
   };
+
+  const handleModalNavigate = (newIndex: number) => {
+    if (newIndex >= 0 && newIndex < history.length) {
+      setSelectedEntry(history[newIndex]);
+      setSelectedEntryIndex(newIndex);
+    }
+  };
+
   const handleDelete = async (id: string) => {
     try {
       const response = await fetch(`/api/history/${id}`, { method: 'DELETE' });
       if (!response.ok) throw new Error('Failed to delete');
       toast.success("记录已删除！");
-      fetchHistory(); // Re-fetch to update list
+      fetchHistory(currentPage); // Re-fetch to update list
       if (selectedEntry?.id === id) {
           setIsModalOpen(false);
           setSelectedEntry(null);
+          setSelectedEntryIndex(-1);
       }
     } catch (error) {
       console.error("删除记录失败：", error);
@@ -102,10 +130,25 @@ export default function HistoryPage() {
       });
       if (!response.ok) throw new Error('Failed to update favorite status');
       toast.success(!currentIsFavorite ? "已收藏！" : "已取消收藏！");
-      fetchHistory(); // Re-fetch to update list
+
+      // Optimistically update local state for immediate UI feedback in modal
       if (selectedEntry?.id === id) {
         setSelectedEntry(prev => prev ? {...prev, isFavorite: !currentIsFavorite} : null);
       }
+
+      // Update the main history list
+      setHistory(prevHistory => prevHistory.map(entry => 
+        entry.id === id ? { ...entry, isFavorite: !currentIsFavorite } : entry
+      ));
+
+      // And the paginated list if the item is there
+      setPaginatedDisplayHistory(prevPaginated => prevPaginated.map(entry =>
+        entry.id === id ? { ...entry, isFavorite: !currentIsFavorite } : entry
+      ));
+
+      // Optionally, re-fetch to ensure sync, though optimistic update is often enough
+      // fetchHistory(currentPage); 
+
     } catch (error) {
       console.error("更新收藏状态失败：", error);
       toast.error("更新收藏状态失败。");
@@ -169,11 +212,11 @@ export default function HistoryPage() {
       ) : (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-            {history.map((entry) => (
+            {paginatedDisplayHistory.map((entry, index) => (
               <Card
                 key={entry.id}
                 className="overflow-hidden group relative cursor-pointer dark:bg-slate-800 dark:border-slate-700 hover:shadow-xl transition-shadow aspect-[3/4]" // Aspect ratio for consistency
-                // onClick={() => handleImageClick(entry)} // Click handled by overlay button now
+                onClick={() => handleImageClick(entry, index)} // Click handled by overlay button now
               >
                 <CardContent className="p-0 h-full">
                   <Image
@@ -187,9 +230,6 @@ export default function HistoryPage() {
                   />
                 </CardContent>
                 <div className="absolute inset-0 bg-black/10 opacity-0 group-hover:bg-black/40 group-hover:opacity-100 transition-all duration-300 flex flex-col items-center justify-center p-2">
-                    <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 mb-1" onClick={(e) => { e.stopPropagation(); handleImageClick(entry); }}>
-                        <Maximize className="h-6 w-6"/>
-                    </Button>
                     <div className="flex space-x-1 mt-1">
                         <Button variant="ghost" size="icon" 
                             className={`text-white hover:bg-white/20 ${entry.isFavorite ? 'text-yellow-400 hover:text-yellow-300' : 'hover:text-yellow-400'}`} 
@@ -211,19 +251,24 @@ export default function HistoryPage() {
           <PaginationControls
             currentPage={currentPage}
             totalPages={totalPages}
-            onPageChange={setCurrentPage}
+            onPageChange={(page) => setCurrentPage(page)}
             itemsPerPage={ITEMS_PER_PAGE}
             totalItems={totalItems}
           />
         </>
       )}
-      <ImageDetailModal
-        isOpen={isModalOpen}
-        onOpenChange={setIsModalOpen}
-        historyEntry={selectedEntry}
-        onDelete={handleDelete}
-        onToggleFavorite={handleToggleFavorite}
-      />
+      {selectedEntry && ( // Ensure selectedEntry is not null before rendering modal
+        <ImageDetailModal
+          isOpen={isModalOpen}
+          onOpenChange={setIsModalOpen}
+          historyEntry={selectedEntry}
+          allEntries={history} // Pass the current page's items for navigation within the page
+          currentIndex={selectedEntryIndex}
+          onNavigate={handleModalNavigate}
+          onDelete={handleDelete}
+          onToggleFavorite={handleToggleFavorite}
+        />
+      )}
     </div>
   );
 }

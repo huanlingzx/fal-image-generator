@@ -1,7 +1,7 @@
 // app/(app)/models/fal-ai-flux-lora/page.tsx
 "use client";
 
-import { useState, FormEvent } from "react"; // Keep useEffect if needed for other things
+import { useState, FormEvent, useCallback } from "react";
 import { toast } from "sonner";
 
 // Shared Components
@@ -19,33 +19,26 @@ import { HistoryEntry, ApiImage as GlobalApiImage } from "@/lib/types"; // Impor
 
 
 // API response types (consider moving to a shared types.ts file)
-interface ApiImage {
-  url: string;
-  content_type: string;
-  width: number;
-  height: number;
-}
+// interface ApiImage { // This can be replaced by GlobalApiImage or OutputApiImage
+//   url: string;
+//   content_type: string;
+//   width: number;
+//   height: number;
+// }
+
 interface FalApiResponseData {
-  images: ApiImage[];
+  // images: ApiImage[];
+  images: GlobalApiImage[]; // Use GlobalApiImage
   seed: number;
   prompt: string;
   timings?: { inference: number };
   has_nsfw_concepts?: boolean[];
 }
+
 interface ApiResponse {
   data: FalApiResponseData;
   requestId: string;
 }
-
-// Constants (can also be moved or configured)
-// const FLUX_LORA_IMAGE_SIZE_OPTIONS = [
-//   { value: "square_hd", label: "1:1 HD", icon: "■" },
-//   { value: "square", label: "1:1", icon: "□" },
-//   { value: "portrait_4_3", label: "3:4", icon: "▯" },
-//   { value: "portrait_16_9", label: "9:16", icon: "▮" },
-//   { value: "landscape_4_3", label: "4:3", icon: "▭" },
-//   { value: "landscape_16_9", label: "16:9", icon: "▬" },
-// ];
 
 const FLUX_LORA_IMAGE_SIZE_OPTIONS = [
   {
@@ -87,13 +80,12 @@ const FLUX_LORA_IMAGE_SIZE_OPTIONS = [
 ];
 
 
-
 export default function FluxLoraPage() {
   // State for Flux LoRA Model
   const [prompt, setPrompt] = useState<string>(
     "Extreme close-up of a single tiger eye..." // Your default prompt
   );
-  const [imageSize, setImageSize] = useState<string>("landscape_16_9");
+  const [imageSize, setImageSize] = useState<string>("square_hd");
   const [outputFormat, setOutputFormat] = useState<"jpeg" | "png">("png");
   const [seed, setSeed] = useState<string>(() => String(Math.floor(Math.random() * 1000000)));
   const [numImages, setNumImages] = useState<number>(1);
@@ -102,9 +94,10 @@ export default function FluxLoraPage() {
   const [loras, setLoras] = useState<LoraItemData[]>([]); // Use LoraItemData type
 
   // State for API interaction and UI
-  const [generatedImage, setGeneratedImage] = useState<ApiImage | null>(null);
-  // const [generatedSeed, setGeneratedSeed] = useState<number | null>(null);
+  // const [generatedImage, setGeneratedImage] = useState<ApiImage | null>(null);
+  const [generatedImage, setGeneratedImage] = useState<GlobalApiImage | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isModifyingPrompt, setIsModifyingPrompt] = useState<boolean>(false); // New state for prompt modification
   const [lastGenerationParams, setLastGenerationParams] = useState<GenerationParameters | null>(null);
 
   // State for the image detail modal
@@ -116,9 +109,11 @@ export default function FluxLoraPage() {
   const handleAddLora = () => {
     setLoras((prevLoras) => [...prevLoras, { id: crypto.randomUUID(), path: "", scale: 1.0 }]);
   };
+
   const handleRemoveLora = (id: string) => {
     setLoras((prevLoras) => prevLoras.filter((lora) => lora.id !== id));
   };
+
   const handleLoraChange = (id: string, field: "path" | "scale", value: string | number) => {
     setLoras((prevLoras) =>
       prevLoras.map((lora) =>
@@ -126,11 +121,13 @@ export default function FluxLoraPage() {
       )
     );
   };
+
   const generateNewSeed = () => {
     const newSeedVal = String(Math.floor(Math.random() * 100000000));
     setSeed(newSeedVal);
     toast.info(`New seed generated: ${newSeedVal}`);
   };
+
 
 
   const handleSubmit = async (event: FormEvent) => {
@@ -219,22 +216,42 @@ export default function FluxLoraPage() {
     }
   };
 
-
-  const handleOutputImageClick = () => {
-    if (generatedImage && lastGenerationParams) {
-      // Construct a temporary HistoryEntry-like object for the modal
-      const tempEntry: HistoryEntry = {
-        id: `temp-${Date.now()}`, // Temporary ID
-        modelId: "fal-ai/flux-lora",
-        modelName: "Flux LoRA",
-        timestamp: Date.now(),
-        image: generatedImage,
-        parameters: lastGenerationParams,
-      };
-      setModalImageDetails(tempEntry);
-      setIsDetailModalOpen(true);
+  const handlePromptModification = useCallback(async (action: 'enhance' | 'structure') => {
+    if (!prompt.trim()) {
+      toast.error("提示词不能为空。");
+      return;
     }
-  };
+    setIsModifyingPrompt(true);
+    const originalPrompt = prompt; // Save original prompt for toast
+    try {
+      const response = await fetch('/api/pollinations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: prompt, action }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || `Failed to ${action} prompt`);
+      }
+
+      if (result.modifiedText) {
+        setPrompt(result.modifiedText);
+        toast.success(`提示词已成功${action === 'enhance' ? '增强' : '结构化'}！`);
+      } else {
+        throw new Error("API did not return modified text.");
+      }
+    } catch (error: any) {
+      console.error(`Error ${action} prompt:`, error);
+      toast.error(error.message || `无法${action === 'enhance' ? '增强' : '结构化'}提示词。`);
+      setPrompt(originalPrompt); // Revert to original on error
+    } finally {
+      setIsModifyingPrompt(false);
+    }
+  }, [prompt, setPrompt]);
+
+
 
   // Optional: Functions for "Save Settings" or "Load Defaults"
   const handleSaveSettings = () => {
@@ -275,6 +292,9 @@ export default function FluxLoraPage() {
             handleAddLora={handleAddLora}
             handleRemoveLora={handleRemoveLora}
             handleLoraChange={handleLoraChange}
+            onEnhancePrompt={() => handlePromptModification('enhance')} // Pass new handlers
+            onStructurePrompt={() => handlePromptModification('structure')} // Pass new handlers
+            isModifyingPrompt={isModifyingPrompt} // Pass loading state
           />
         </SettingsPanel>
       }
@@ -282,16 +302,22 @@ export default function FluxLoraPage() {
         <OutputPanel
           isLoading={isLoading}
           generatedImage={generatedImage}
-          generationParams={lastGenerationParams}
+          generationParams={lastGenerationParams as GenerationParameters | null} // Explicit cast if OutputPanel expects GenerationParameters
+          // generationParams={lastGenerationParams as OutputApiImage extends GlobalApiImage ? GenerationParameters | null : never} // More type-safe cast
         />
       }
     />
-      <ImageDetailModal
-        isOpen={isDetailModalOpen}
-        onOpenChange={setIsDetailModalOpen}
-        historyEntry={modalImageDetails}
-        // No delete/favorite actions needed for this temporary view from model page
-      />
+      {modalImageDetails && ( // Conditionally render if modalImageDetails is not null
+        <ImageDetailModal
+          isOpen={isDetailModalOpen}
+          onOpenChange={setIsDetailModalOpen}
+          historyEntry={modalImageDetails}
+          allEntries={modalImageDetails ? [modalImageDetails] : []} // Pass only the current item
+          currentIndex={0} // Current index is always 0 for a single item
+          onNavigate={() => {}} // No-op for single item navigation
+          // onDelete and onToggleFavorite can be omitted or handled if you want to interact with history from here
+        />
+      )}
     </>
   );
 }

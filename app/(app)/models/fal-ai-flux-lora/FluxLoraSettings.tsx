@@ -24,7 +24,7 @@ interface FluxLoraSettingsProps {
   setPrompt: (value: string) => void;
   imageSize: string;
   setImageSize: (value: string) => void;
-  imageSizeOptions: Array<{ value: string; label: string; icon: string; resolution: string }>; // Pass options
+  imageSizeOptions: Array<{ value: string; label: string; icon: string; resolution: string }>; // resolution is optional as per other usage
   outputFormat: "jpeg" | "png";
   setOutputFormat: (value: "jpeg" | "png") => void;
   seed: string;
@@ -41,6 +41,9 @@ interface FluxLoraSettingsProps {
   handleAddLora: () => void;
   handleRemoveLora: (id: string) => void;
   handleLoraChange: (id: string, field: "path" | "scale", value: string | number) => void;
+  onEnhancePrompt: () => void;
+  onStructurePrompt: () => void;
+  isModifyingPrompt?: boolean;
 }
 
 export default function FluxLoraSettings({
@@ -52,10 +55,17 @@ export default function FluxLoraSettings({
   numInferenceSteps, setNumInferenceSteps,
   guidanceScale, setGuidanceScale,
   loras, handleAddLora, handleRemoveLora, handleLoraChange,
+  onEnhancePrompt, onStructurePrompt, isModifyingPrompt,
 }: FluxLoraSettingsProps) {
   return (
     <>
-      <PromptInput value={prompt} onChange={setPrompt} />
+      <PromptInput
+        value={prompt}
+        onChange={setPrompt}
+        onEnhancePrompt={onEnhancePrompt}
+        onStructurePrompt={onStructurePrompt}
+        isModifyingPrompt={isModifyingPrompt}
+      />
 
       <ImageSizeSelector value={imageSize} onChange={setImageSize} options={imageSizeOptions} />
 

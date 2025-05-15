@@ -2,15 +2,24 @@
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Wand2, ListTree } from "lucide-react"; // Assuming you have these icons
+import { Wand2, ListTree, Loader2 } from "lucide-react";
 
 interface PromptInputProps {
   value: string;
   onChange: (value: string) => void;
-  // You can add props for the helper buttons if they have functionality
+  onEnhancePrompt: () => void;
+  onStructurePrompt: () => void;
+  isModifyingPrompt?: boolean;
 }
 
-export default function PromptInput({ value, onChange }: PromptInputProps) {
+// export default function PromptInput({ value, onChange }: PromptInputProps) {
+export default function PromptInput({
+  value,
+  onChange,
+  onEnhancePrompt,
+  onStructurePrompt,
+  isModifyingPrompt = false,
+}: PromptInputProps) {
   return (
     <div className="space-y-2">
       <Label htmlFor="prompt">提示词</Label>
@@ -19,8 +28,28 @@ export default function PromptInput({ value, onChange }: PromptInputProps) {
         <Button type="button" variant="outline" size="sm" className="bg-blue-100 text-blue-700 border-blue-300 hover:bg-blue-200 dark:bg-blue-700/30 dark:text-blue-300 dark:border-blue-600 dark:hover:bg-blue-600/40">标签化</Button>
         {/* Add more helper buttons if needed */}
         <div className="flex-grow hidden sm:block"></div>
-        <Button type="button" variant="outline" size="sm" className="dark:hover:bg-slate-700"><Wand2 className="mr-1 h-3 w-3"/>提示词增强</Button>
-        <Button type="button" variant="outline" size="sm" className="dark:hover:bg-slate-700"><ListTree className="mr-1 h-3 w-3"/>标签结构化</Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="dark:hover:bg-slate-700"
+          onClick={onEnhancePrompt}
+          disabled={isModifyingPrompt}
+        >
+          {isModifyingPrompt ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Wand2 className="mr-1 h-3 w-3"/>}
+          提示词增强
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="dark:hover:bg-slate-700"
+          onClick={onStructurePrompt}
+          disabled={isModifyingPrompt}
+        >
+          {isModifyingPrompt ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <ListTree className="mr-1 h-3 w-3"/>}
+          标签结构化
+        </Button>
       </div>
       <Textarea
         id="prompt"
